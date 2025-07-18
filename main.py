@@ -541,10 +541,27 @@ class CreditScoringInference:
         
         predictions = self.model.predict(X_processed, verbose=0)
         
+        # --- Indian Calibration Logic Start ---
         raw_score = float(predictions[0][0])
-        credit_score = min(900, max(300, int(raw_score)))
-
-
+    
+        # Scale raw score (assuming it's between 0-1) to Indian range
+        if raw_score <= 1.0:
+            base_score = 300 + (raw_score * 600)  # Scale to 300-900
+        else:
+            base_score = raw_score  # Assume already in the desired range
+    
+        # Apply Indian market adjustments
+        income_adj = min(100, user_profile.monthlyIncome / 1000)  # Income boost
+        employment_adj = {
+            "salaried": 50,
+            "self_employed": 25,
+            "business_owner": 15,
+            "freelancer": 0
+        }.get(user_profile.employmentType, 0)
+    
+        credit_score = int(min(850, max(350, base_score + income_adj + employment_adj)))
+        # --- Indian Calibration Logic End ---
+    
         confidence_score = float(predictions[1][0] * 100)
         risk_category_idx = np.argmax(predictions[2][0])
         risk_level_idx = np.argmax(predictions[3][0])
@@ -558,13 +575,13 @@ class CreditScoringInference:
             lengthOfHistory=ScoreBreakdownItem(score=min(100, user_profile.bankAccounts_accountAge * 3.33), weight=15),
             newCredit=ScoreBreakdownItem(score=max(0, 100 - user_profile.creditCards_cardCount * 10), weight=10),
             creditMix=ScoreBreakdownItem(score=100 - min(100, user_profile.existingLoans_activeLoanCount * 20), weight=10),
-
+    
             alternativeFactors=ScoreBreakdownItem(
-    score=(user_profile.digitalPaymentScore + user_profile.socialMediaScore + 
-           user_profile.appUsageScore + user_profile.locationStabilityScore + 
-           user_profile.phoneUsagePattern) / 5, 
-    weight=10
-)
+                score=(user_profile.digitalPaymentScore + user_profile.socialMediaScore + 
+                       user_profile.appUsageScore + user_profile.locationStabilityScore + 
+                       user_profile.phoneUsagePattern) / 5, 
+                weight=10
+            )
         )
         
         recommendations = self.generate_recommendations(user_profile, credit_score)
@@ -579,6 +596,7 @@ class CreditScoringInference:
             recommendations=recommendations,
             improvementTips=improvement_tips
         )
+
     
     def generate_recommendations(self, user_profile: UserProfileData, credit_score: int) -> List[str]:
         recommendations = []
