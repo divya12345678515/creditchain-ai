@@ -521,8 +521,11 @@ class CreditScoringInference:
         input_data['employmentType_encoded'] = self.le_employment.transform([input_data['employmentType']])[0]
         input_data['bankAccounts_accountType_encoded'] = self.le_account_type.transform([input_data['bankAccounts_accountType']])[0]
         
-        if 'existingLoans_loanTypes' in input_data:
-            input_data['existingLoans_activeLoanCount'] = len(input_data['existingLoans_loanTypes'])
+        # In preprocess_input method (around line ~430), add proper handling for missing loan types:
+        if 'existingLoans_loanTypes' in input_data and input_data['existingLoans_loanTypes']:
+            input_data['existingLoans_loanTypesCount'] = len(input_data['existingLoans_loanTypes'])
+        else:
+            input_data['existingLoans_loanTypesCount'] = 0
         
         feature_vector = []
         for feature in self.feature_columns:
@@ -538,7 +541,10 @@ class CreditScoringInference:
         
         predictions = self.model.predict(X_processed, verbose=0)
         
-        credit_score = int(predictions[0][0])
+        raw_score = float(predictions[0][0])
+        credit_score = min(900, max(300, int(raw_score)))
+
+
         confidence_score = float(predictions[1][0] * 100)
         risk_category_idx = np.argmax(predictions[2][0])
         risk_level_idx = np.argmax(predictions[3][0])
@@ -551,8 +557,14 @@ class CreditScoringInference:
             creditUtilization=ScoreBreakdownItem(score=max(0, 100 - user_profile.creditUtilizationRatio * 1.5), weight=30),
             lengthOfHistory=ScoreBreakdownItem(score=min(100, user_profile.bankAccounts_accountAge * 3.33), weight=15),
             newCredit=ScoreBreakdownItem(score=max(0, 100 - user_profile.creditCards_cardCount * 10), weight=10),
-            creditMix=ScoreBreakdownItem(score=min(100, user_profile.existingLoans_activeLoanCount * 20), weight=10),
-            alternativeFactors=ScoreBreakdownItem(score=(user_profile.digitalPaymentScore + user_profile.socialMediaScore + user_profile.appUsageScore) / 3, weight=10)
+            creditMix=ScoreBreakdownItem(score=100 - min(100, user_profile.existingLoans_activeLoanCount * 20), weight=10),
+
+            alternativeFactors=ScoreBreakdownItem(
+    score=(user_profile.digitalPaymentScore + user_profile.socialMediaScore + 
+           user_profile.appUsageScore + user_profile.locationStabilityScore + 
+           user_profile.phoneUsagePattern) / 5, 
+    weight=10
+)
         )
         
         recommendations = self.generate_recommendations(user_profile, credit_score)
