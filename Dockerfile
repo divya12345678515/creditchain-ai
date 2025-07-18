@@ -1,5 +1,5 @@
 # Use a slim Python image compatible with TensorFlow 2.18
-FROM python:3.9-slim-buster
+FROM python:3.9-slim-bullseye
 
 # Set the working directory in the container
 WORKDIR /app
