@@ -563,11 +563,30 @@ class CreditScoringInference:
         # --- Indian Calibration Logic End ---
     
         confidence_score = float(predictions[1][0] * 100)
-        risk_category_idx = np.argmax(predictions[2][0])
-        risk_level_idx = np.argmax(predictions[3][0])
         
-        risk_category = self.le_risk_category.inverse_transform([risk_category_idx])[0]
-        risk_level = self.le_risk_level.inverse_transform([risk_level_idx])[0]
+        # FIXED: Derive risk category and level from credit score instead of model predictions
+        def get_risk_category_from_score(credit_score):
+            if credit_score >= 750:
+                return "excellent"
+            elif credit_score >= 700:
+                return "good"
+            elif credit_score >= 650:
+                return "fair"
+            elif credit_score >= 600:
+                return "poor"
+            else:
+                return "very_poor"
+    
+        def get_risk_level_from_score(credit_score):
+            if credit_score >= 750:
+                return "low"
+            elif credit_score >= 650:
+                return "medium"
+            else:
+                return "high"
+    
+        risk_category = get_risk_category_from_score(credit_score)
+        risk_level = get_risk_level_from_score(credit_score)
         
         score_breakdown = ScoreBreakdownOutput(
             paymentHistory=ScoreBreakdownItem(score=float(user_profile.paymentRegularity), weight=35),
@@ -596,7 +615,6 @@ class CreditScoringInference:
             recommendations=recommendations,
             improvementTips=improvement_tips
         )
-
     
     def generate_recommendations(self, user_profile: UserProfileData, credit_score: int) -> List[str]:
         recommendations = []
